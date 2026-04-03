@@ -1,0 +1,3 @@
+[submodule "ONNX-Frontend"]
+	path = ONNX-Frontend
+	url = https://github.com/rogovogor17/ONNX-Frontend
