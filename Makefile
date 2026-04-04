@@ -12,7 +12,7 @@ BOLD := \033[1m
 NC := \033[0m
 
 # Project configurations
-PROJECT_NAME := MLIR2LLVM
+PROJECT_NAME := ONNX2MLIR
 BUILD_DIR := build
 SOURCE_DIR := src
 TESTS_DIR := tests
