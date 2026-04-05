@@ -85,13 +85,13 @@ configure-release:
 .PHONY: run-debug
 run-debug: debug
 	@echo "$(MAGENTA)Run debug version...$(NC)"
-	@./$(DEBUG_BUILD_DIR)/$(SOURCE_DIR)/$(PROJECT_NAME) $(ARGS)
+	@./$(DEBUG_BUILD_DIR)/$(PROJECT_NAME) $(ARGS)
 
 # Run release version
 .PHONY: run-release
 run-release: release
 	@echo "$(MAGENTA)Run release version...$(NC)"
-	@./$(RELEASE_BUILD_DIR)/$(SOURCE_DIR)/$(PROJECT_NAME) $(ARGS)
+	@./$(RELEASE_BUILD_DIR)/$(PROJECT_NAME) $(ARGS)
 
 # Run debug tests
 .PHONY: test-debug

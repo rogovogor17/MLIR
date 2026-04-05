@@ -4,7 +4,6 @@ project(ONNX2MLIR LANGUAGES C CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# Пути к LLVM (Homebrew на Apple Silicon)
 set(LLVM_DIR "/opt/homebrew/opt/llvm/lib/cmake/llvm" CACHE PATH "LLVM CMake dir")
 
 find_package(LLVM REQUIRED CONFIG)
@@ -13,14 +12,17 @@ message(STATUS "Found LLVM ${LLVM_PACKAGE_VERSION}")
 include_directories(${LLVM_INCLUDE_DIRS})
 add_definitions(${LLVM_DEFINITIONS} -D__STDC_CONSTANT_MACROS -D__STDC_FORMAT_MACROS)
 
-add_executable(${PROJECT_NAME} src/main.cpp)
+add_executable(${PROJECT_NAME}
+    src/main.cpp
+    src/utils.cpp
+)
 
+target_include_directories(${PROJECT_NAME} PRIVATE include)
 target_link_libraries(${PROJECT_NAME} PRIVATE
     LLVMSupport
     LLVMCore
 )
 
-# 🔹 macOS: rpath для динамических библиотек LLVM
 if(APPLE)
     set_target_properties(${PROJECT_NAME} PROPERTIES
         INSTALL_RPATH "@executable_path;/opt/homebrew/opt/llvm/lib"
