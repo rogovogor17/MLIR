@@ -12,44 +12,39 @@
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/Support/ErrorOr.h"
 
-bool createDirectory(const std::string& path) {
+void createDirectory(const std::string& path) {
     std::error_code ec;
 
-    if (std::filesystem::exists(path, ec) && std::filesystem::is_directory(path, ec)) {
-        return true;
-    }
+    if (std::filesystem::exists(path, ec) && std::filesystem::is_directory(path, ec))
+        return;
 
-    if (!std::filesystem::create_directories(path, ec)) {
-        return true;
-    }
+    if (!std::filesystem::create_directories(path, ec))
+        return;
 
-    std::cerr << "[Error] Cannot create directory '" << path
-              << "': " << ec.message() << "\n";
-    return false;
+    std::string error_msg = "[Error] Cannot create directory '" + path
+                            + "': " + ec.message() + "\n";
+    throw std::runtime_error(error_msg);
 }
 
-void createMLIR(const std::string& inputPath) {
+std::string& createStep(keyNames&& names) {
+
     std::string error_msg;
+    std::string& outputPath = names.outputPath;
 
-    std::string outputPath = MLIR_OUTPUT_;
-    if (!createDirectory(TEMP_DIR_))
-        throw std::runtime_error("Failed to create directory: " TEMP_DIR_);
-
-    llvm::ErrorOr<std::string> exePathOrErr = llvm::sys::findProgramByName(ONNX_MLIR_CMD_);
+    llvm::ErrorOr<std::string> exePathOrErr = llvm::sys::findProgramByName(names.cmdName);
     if (!exePathOrErr) {
-        error_msg = "[Error] onnx-mlir not found: " + exePathOrErr.getError().message();
+        error_msg = "[Error]" + names.cmdName + " not found: " + exePathOrErr.getError().message();
         throw std::runtime_error(error_msg);
     }
     std::string exePath = *exePathOrErr;
-
     llvm::SmallVector<llvm::StringRef, 8> args = {
-        exePath, inputPath, "-o", outputPath, ONNX_MLIR_FLAG_,
+        exePath, names.inputPath, "-o", outputPath, names.cmdFlags,
     };
 
     std::optional<llvm::StringRef> redirects[] = {
         std::nullopt,
-        llvm::StringRef(CMD_LOG_PATH_),
-        llvm::StringRef(CMD_LOG_PATH_)
+        llvm::StringRef(names.cmdlogPath),
+        llvm::StringRef(names.cmdlogPath)
     };
 
     int rc = llvm::sys::ExecuteAndWait(exePath, args, std::nullopt,
@@ -58,15 +53,17 @@ void createMLIR(const std::string& inputPath) {
     );
 
     if (rc != 0) {
-        error_msg = "[Error] onnx-mlir exited with code " + std::to_string(rc)
+        error_msg = "[Error]" + names.cmdName + " exited with code " + std::to_string(rc)
                     + "\n" + "Details: " + error_msg.c_str();
         throw std::runtime_error(error_msg);
     }
 
-    outputPath += ONNX_MLIR_EXT_;
+    outputPath += names.cmdProduceExt;
     std::ifstream mlirFile(outputPath);
     if (!mlirFile) {
         error_msg = "[Error] Could not open output file: " + outputPath;
         throw std::runtime_error(error_msg);
     }
+
+    return outputPath;
 }
