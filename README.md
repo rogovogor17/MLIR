@@ -13,10 +13,9 @@
 4. [Шаг 1: Подготовка ONNX модели](#шаг-1-подготовка-onnx-модели)
 5. [Шаг 2: Конвертация ONNX → MLIR → LLVM IR](#шаг-2-конвертация-onnx--mlir--llvm-ir)
 6. [Шаг 3: Исполняемый файл](#шаг-3-исполняемый-файл)
-7. [Шаг 4: Предобработка изображений](#шаг-4-предобработка-изображений)
+7. [Шаг 4: Обертка-пример](#шаг-4-обертка-пример)
 8. [Шаг 5: Валидация на Python](#шаг-5-валидация-на-python)
-9. [Troubleshooting и уроки](#troubleshooting-и-уроки)
-10. [Ссылки и ресурсы](#ссылки-и-ресурсы)
+9. [Ссылки и ресурсы](#ссылки-и-ресурсы)
 
 ---
 
@@ -83,8 +82,8 @@ D --> G[Top-3 Classes]
 Используя написанный драйвер `src/main.cpp`:
 
 ```bash
-make debug
-make run-debug ARGS="squeezenet1.0-12.onnx"
+make release
+make run-release ARGS="squeezenet1.0-12.onnx"
 ```
 
 получим в сформированной директории `temp/` следующий набор промежуточных стадий компиляции модели:
@@ -99,89 +98,58 @@ make run-debug ARGS="squeezenet1.0-12.onnx"
 
 ## Шаг 3: Исполняемый файл
 
-Используя написанный драйвер `src/main.cpp`:
+Далее произведем сборку полученного на предыдущем этапе `output.ll` и написанной обертки `main.c`, использующей модель из `output.ll`, в исполняемый файл:
 
 ```bash
-make debug
-make run-debug ARGS="squeezenet1.0-12.onnx"
+make release
 ```
+
+Получим в директории `build/Release/temp` исполняемый файл модели `.app`.
 
 ---
 
-## Шаг 4: Предобработка изображений
+## Шаг 4: Обертка-пример
 
-SqueezeNet из ONNX Model Zoo ожидает вход в формате **BGR**, нормализованный по ImageNet статистике.
+Обертка `main.c` использует модель сети `output.ll`, а именно на примере сети `SqueezeNet1.0-12`, следующим образом:
 
-### Алгоритм предобработки
+1. Создает пустой входной тензор сети.
+2. Заполняет его конкретным изображением из директории `data/` с помощью библиотеки `stb_image.h`, проводя небольшую корректировку изображения по размеру.
+3. Производит запуск сети.
+4. Получает выходной тензор результата работы.
+5. Ищет в нем 3 класса из 1000, под которые наиболее вероятно подходит данное на вход изображение.
 
-1. Загрузка изображения → `RGB` (через `stb_image` или `PIL`).
-2. Ресайз до `224×224`.
-3. Конвертация каналов: `RGB → BGR`.
-4. Нормализация: `(pixel/255.0 - mean) / std`.
-   - `mean = [0.406, 0.456, 0.485]` (B, G, R)
-   - `std  = [0.225, 0.224, 0.229]`
-5. Перестановка осей: `HWC → CHW` → добавление батча `NCHW`.
-6. Запись в `float32` тензор.
+Получили такой вывод при подаче изображения кота `data/cat.png`:
 
-### Пример на C++
-
-```c
-// Каналы модели: 0=B, 1=G, 2=R
-float means[3] = {0.406f, 0.456f, 0.485f};
-float stds[3]  = {0.225f, 0.224f, 0.229f};
-int rgb_to_bgr[3] = {2, 1, 0};
-
-for (int c = 0; c < 3; ++c) {
-    for (int y = 0; y < 224; ++y) {
-        for (int x = 0; x < 224; ++x) {
-            int src_idx = (y * width + x) * 3 + rgb_to_bgr[c];
-            float val = img_data[src_idx] / 255.0f;
-            val = (val - means[c]) / stds[c];
-            input_data[c * 224 * 224 + y * 224 + x] = val;
-        }
-    }
-}
+```text
+Run ONNX exe!
+Success! Top-3:
+    1. Class 669: 0.1996
+    2. Class 728: 0.1010
+    3. Class 591: 0.0535
 ```
+
+На данном этапе нельзя установить корректность работы обертки-примера и драйвера, так как ни один из наиболее вероятных класса содержимого изображения не подходит под настоящее содержание.
 
 ---
 
 ## Шаг 5: Валидация на Python
 
-Для верификации корректности C++ пайплайна используется эталонный скрипт на `onnxruntime`:
+Для верификации корректности C++ используется эталонный скрипт `src/squeezenet.py`. Результат работы:
 
-```python
-import onnxruntime as ort
-import numpy as np
-from PIL import Image
+```text
+Input tensor shape: (1, 3, 224, 224)
 
-img = Image.open("cat.jpg").resize((224, 224)).convert("RGB")
-arr = np.array(img, dtype=np.float32) / 255.0
-# RGB -> BGR + нормализация
-arr = arr[:, :, ::-1]
-mean = np.array([0.406, 0.456, 0.485])
-std  = np.array([0.225, 0.224, 0.229])
-arr = (arr - mean) / std
-arr = np.expand_dims(arr.transpose(2, 0, 1), 0)
-
-session = ort.InferenceSession("squeezenet1.0.onnx")
-out = session.run(None, {session.get_inputs()[0].name: arr})[0]
-print("Top-3:", np.argsort(out.flatten())[::-1][:3])
+Top-5:
+----------------------------------------
+#1 Class 669: (0.1996)
+#2 Class 728: (0.1010)
+#3 Class 591: (0.0535)
+#4 Class 111: (0.0516)
+#5 Class 6: (0.0465)
+----------------------------------------
 ```
 
-> ✅ Результаты C++ и Python должны совпадать с точностью до `1e-5`.
-
----
-
-## Troubleshooting и уроки
-
-| Ошибка                                                | Причина                         | Решение                                                            |
-| ----------------------------------------------------- | ------------------------------- | ------------------------------------------------------------------ |
-| `no member named 'cout' in namespace 'std'`           | Пропущен `#include <iostream>`  | Добавить заголовок                                                 |
-| `executeAndWait: no viable conversion from nullopt_t` | API изменён в LLVM 22+          | Использовать `std::optional<ArrayRef<StringRef>>{}`                |
-| `omTensorCreate(NULL) → segfault`                     | Функция не выделяет память      | Заменить на `omTensorCreateEmpty()`                                |
-| `Class 669 (bridge) вместо кота`                      | Перепутаны RGB/BGR или mean/std | Поменять каналы местами и использовать BGR-нормализацию            |
-| `CMake: No rule to make target output.ll`             | Файл ещё не сгенерирован        | Добавить `if(EXISTS ...)` в `CMakeLists.txt`                       |
-| `Relu(1) not implemented`                             | Устаревший opset 3              | Апгрейднуть модель: `version_converter.convert_version(model, 12)` |
+> Результаты C++ и Python должны совпадать с точностью до `1e-5`. Можем увидеть, что 3 наиболее вероятных класса изображения в точности совпали с полученными на предыдущем этапе. Это означает, что наш написанный драйвер нейронной сети и обертка-пример работают корректно, но сама сеть достаточно плохо определяет принадлежность изображения к классу по содержимому.
 
 ---
 
@@ -199,23 +167,9 @@ print("Top-3:", np.argsort(out.flatten())[::-1][:3])
 
 Исследование успешно продемонстрировало полный цикл компиляции и запуска нейронной сети:
 
-1. Восстановление ONNX из текстового дампа.
-2. Генерация MLIR и LLVM IR через `onnx-mlir`.
-3. Интеграция с `libcruntime` и исправление API-несовместимостей LLVM 22+.
-4. Корректная предобработка изображений (BGR, нормализация, HWC→CHW).
-5. Валидация через Python и совпадение предсказаний.
-
-Полученный пайплайн готов к расширению: добавлению динамических шейпов, квантованию (`INT8`), деплою на edge-устройства или интеграции в production-сервисы.
+1. Генерация MLIR и LLVM IR через `onnx-mlir`.
+2. Интеграция с `libcruntime`.
+3. Запуск нейронной сети с входным тензором.
+4. Валидация через Python и совпадение предсказаний.
 
 ---
-
-export PATH="/path/to/onnx-mlir/build/Release/bin:$PATH"
-export PATH="/path/to/llvm/bin:$PATH"
-
-onnx-mlir-opt --convert-krnl-to-llvm temp/output.onnx.mlir -o temp/llvm_dialect.mlir
-mlir-translate --mlir-to-llvmir temp/llvm_dialect.mlir -o temp/output.ll
-/opt/homebrew/opt/llvm/bin/clang -O3 -Wno-override-module \
- -I${HOME}/onnx-mlir/include \
-  temp/output.ll src/main.c \
-  -L${HOME}/onnx-mlir/build/Release/lib -lcruntime \
- -o temp/app
