@@ -41,7 +41,7 @@
 
 ## Архитектура и поток данных
 
-```mermaid
+```text
 A[ONNX Model .onnx] -->|onnx-mlir --EmitMLIR| B[MLIR .onnx.mlir]
 B -->|onnx-mlir-opt --convert-krnl-to-llvm| C[MLIR with LLVM Dialects .mlir]
 C -->|mlir-translate --mlir-to-llvmir| D[LLVM IR .ll]
