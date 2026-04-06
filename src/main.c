@@ -4,43 +4,80 @@
 
 #include "OnnxMlirRuntime.h"
 
-/*
- * Сигнатура функции, сгенерированной onnx-mlir:
- * int run_main_graph(OmTensorList* input, OmTensorList** output);
- */
-extern int run_main_graph(OmTensorList* input, OmTensorList** output);
+#define STB_IMAGE_IMPLEMENTATION
+#include "stb_image.h"
+
+extern OMTensorList* run_main_graph(OMTensorList* input);
 
 int main() {
-    printf("🚀 Запуск SqueezeNet 1.0...\n");
+    printf("Run ONNX exe!\n");
 
-    // 1. Создаём входной тензор: [1, 3, 224, 224] типа float32
     int64_t input_shape[] = {1, 3, 224, 224};
-    OmTensor* input_om = omTensorCreateWithShape(
-        input_shape, 4, ONNX_MLIR_FLOAT32);
-
-    // Заполняем входные данные (здесь нулями, в реальности сюда подставляют нормализованное изображение)
+    OMTensor* input_om = omTensorCreateEmpty(input_shape, 4, ONNX_TYPE_FLOAT);
+    if (!input_om) {
+        fprintf(stderr, "[ERROR] Failed to create input tensor!\n");
+        exit(EXIT_FAILURE);
+    }
     float* input_data = (float*)omTensorGetDataPtr(input_om);
-    memset(input_data, 0, sizeof(float) * 1 * 3 * 224 * 224);
-    printf("📦 Входной тензор создан: %.2f MB\n",
-           (1*3*224*224*sizeof(float)) / 1024.0 / 1024.0);
 
-    // 2. Формируем список входов
-    OmTensor* inputs[] = {input_om};
-    OmTensorList* input_list = omTensorListCreate(inputs, 1);
+    int width, height, channels;
+    unsigned char* img_data = stbi_load("data/cat.png", &width, &height, &channels, 3);
 
-    // 3. Запускаем модель
-    OmTensorList* output_list = NULL;
-    int status = run_main_graph(input_list, &output_list);
-    if (status != 0) {
-        fprintf(stderr, "❌ Ошибка выполнения модели: код %d\n", status);
-        return 1;
+    if (!img_data) {
+        fprintf(stderr, "[ERROR] Failed to upload image!\n");
+        exit(EXIT_FAILURE);
     }
 
-    // 4. Читаем результат: [1, 1000]
-    OmTensor* output_om = omTensorListGetOmt(output_list, 0);
+    float means[3] = {0.485f, 0.456f, 0.406f};
+    float stds[3]  = {0.229f, 0.224f, 0.225f};
+    int target_w = 224, target_h = 224;
+
+    for (int c = 0; c < 3; ++c) {
+        for (int y = 0; y < target_h; ++y) {
+            for (int x = 0; x < target_w; ++x) {
+
+                float src_x = (float)x * (width - 1) / (target_w - 1);
+                float src_y = (float)y * (height - 1) / (target_h - 1);
+
+                int ix = (int)src_x;
+                int iy = (int)src_y;
+
+                int idx = (iy * width + ix) * 3 + c;
+                float val = img_data[idx] / 255.0f;
+
+                val = (val - means[c]) / stds[c];
+
+                int out_idx = c * (target_h * target_w) + y * target_w + x;
+                input_data[out_idx] = val;
+            }
+        }
+    }
+
+    stbi_image_free(img_data);
+
+    printf("Created input tensor: %.2f MB\n",
+           (1 * 3 * 224 * 224 * sizeof(float)) / 1024.0 / 1024.0);
+
+    OMTensor* inputs[] = {input_om};
+    OMTensorList* input_list = omTensorListCreate(inputs, 1);
+
+    OMTensorList* output_list = run_main_graph(input_list);
+    if (!output_list) {
+        fprintf(stderr, "ONNX executing failed!\n");
+        omTensorListDestroy(input_list);
+        exit(EXIT_FAILURE);
+    }
+
+    OMTensor** out_oms = omTensorListGetOmtArray(output_list);
+    if (!out_oms || !out_oms[0]) {
+        fprintf(stderr, "No output data!\n");
+        omTensorListDestroy(input_list);
+        omTensorListDestroy(output_list);
+        exit(EXIT_FAILURE);
+    }
+    OMTensor* output_om = out_oms[0];
     float* output_data = (float*)omTensorGetDataPtr(output_om);
 
-    // Находим топ-3 класса
     float max1 = -1.0f, max2 = -1.0f, max3 = -1.0f;
     int idx1 = -1, idx2 = -1, idx3 = -1;
     for (int i = 0; i < 1000; i++) {
@@ -56,14 +93,12 @@ int main() {
         }
     }
 
-    printf("✅ Успешно! Топ-3 предсказания:\n");
-    printf("   1. Класс %d: %.4f\n", idx1, max1);
-    printf("   2. Класс %d: %.4f\n", idx2, max2);
-    printf("   3. Класс %d: %.4f\n", idx3, max3);
+    printf("Success! Top-3:\n");
+    printf("   1. Class %d: %.4f\n", idx1, max1);
+    printf("   2. Class %d: %.4f\n", idx2, max2);
+    printf("   3. Class %d: %.4f\n", idx3, max3);
 
-    // 5. Очистка памяти
     omTensorListDestroy(input_list);
     omTensorListDestroy(output_list);
-
-    return 0;
+    exit(EXIT_SUCCESS);
 }
