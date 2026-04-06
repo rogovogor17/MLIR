@@ -34,6 +34,10 @@ set(CMAKE_C_COMPILER /opt/homebrew/opt/llvm/bin/clang)
 set(LLVM_IR_FILE "${CMAKE_CURRENT_SOURCE_DIR}/temp/output.ll")
 set(LLVM_OBJECT_FILE "${CMAKE_CURRENT_BINARY_DIR}/temp/output.o")
 
+if(NOT EXISTS ${LLVM_IR_FILE})
+    return()
+endif()
+
 add_custom_command(
     OUTPUT ${LLVM_OBJECT_FILE}
     COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_CURRENT_BINARY_DIR}/temp"

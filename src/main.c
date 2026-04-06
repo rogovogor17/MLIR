@@ -21,42 +21,23 @@ int main() {
     float* input_data = (float*)omTensorGetDataPtr(input_om);
 
     int width, height, channels;
-    unsigned char* img_data = stbi_load("data/cat.png", &width, &height, &channels, 3);
-
+    unsigned char* img_data = stbi_load("data/sealion.jpg", &width, &height, &channels, 3);
     if (!img_data) {
         fprintf(stderr, "[ERROR] Failed to upload image!\n");
         exit(EXIT_FAILURE);
     }
 
-    float means[3] = {0.485f, 0.456f, 0.406f};
-    float stds[3]  = {0.229f, 0.224f, 0.225f};
-    int target_w = 224, target_h = 224;
-
-    for (int c = 0; c < 3; ++c) {
-        for (int y = 0; y < target_h; ++y) {
-            for (int x = 0; x < target_w; ++x) {
-
-                float src_x = (float)x * (width - 1) / (target_w - 1);
-                float src_y = (float)y * (height - 1) / (target_h - 1);
-
-                int ix = (int)src_x;
-                int iy = (int)src_y;
-
-                int idx = (iy * width + ix) * 3 + c;
-                float val = img_data[idx] / 255.0f;
-
-                val = (val - means[c]) / stds[c];
-
-                int out_idx = c * (target_h * target_w) + y * target_w + x;
-                input_data[out_idx] = val;
+    for (int ch = 0; ch < 3; ch++) {
+        for (int y = 0; y < height; y++) {
+            for (int x = 0; x < width; x++) {
+                int src_idx = (y * height + x) * 3 + ch;
+                int dst_idx = ch * height * width + y * height + x;
+                input_data[dst_idx] = img_data[src_idx] / 255.0f;
             }
         }
     }
 
     stbi_image_free(img_data);
-
-    printf("Created input tensor: %.2f MB\n",
-           (1 * 3 * 224 * 224 * sizeof(float)) / 1024.0 / 1024.0);
 
     OMTensor* inputs[] = {input_om};
     OMTensorList* input_list = omTensorListCreate(inputs, 1);
