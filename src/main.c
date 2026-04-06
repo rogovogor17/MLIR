@@ -21,7 +21,7 @@ int main() {
     float* input_data = (float*)omTensorGetDataPtr(input_om);
 
     int width, height, channels;
-    unsigned char* img_data = stbi_load("data/sealion.jpg", &width, &height, &channels, 3);
+    unsigned char* img_data = stbi_load("data/cat.png", &width, &height, &channels, 3);
     if (!img_data) {
         fprintf(stderr, "[ERROR] Failed to upload image!\n");
         exit(EXIT_FAILURE);
@@ -30,8 +30,8 @@ int main() {
     for (int ch = 0; ch < 3; ch++) {
         for (int y = 0; y < height; y++) {
             for (int x = 0; x < width; x++) {
-                int src_idx = (y * height + x) * 3 + ch;
-                int dst_idx = ch * height * width + y * height + x;
+                int src_idx = (y * width + x) * 3 + ch;
+                int dst_idx = ch * height * width + y * width + x;
                 input_data[dst_idx] = img_data[src_idx] / 255.0f;
             }
         }
